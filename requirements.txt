@@ -1,0 +1,2 @@
+# No external dependencies required for the current CLI version.
+# Uses only Python standard library modules.
