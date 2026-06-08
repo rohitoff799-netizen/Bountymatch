@@ -1,55 +1,50 @@
 # Bountymatch
 
-Bountymatch is a Python CLI tool that helps bug bounty hunters find programs that fit their preferences. It asks for your region, focus areas, bounty preference, program type, and ranking priority, then groups programs into exact, partial, and fallback matches before ranking them by score inside each group.
+Bountymatch is a Python CLI tool that helps bug bounty hunters find programs that match how they actually hunt.
+
+Instead of showing a random list of programs, Bountymatch asks about your experience, focus areas, bounty preference, region, ranking priority, and program type, then recommends programs using a mix of match quality and scoring signals.
 
 ## What it does
 
-Bountymatch is designed to solve a simple problem: most hunters do not want a random list of programs, they want a shortlist that matches how they actually hunt.
+Bountymatch separates **match quality** from **ranking strength**:
 
-The current logic uses filters to decide match quality and weighted scoring to rank programs within each bucket, which makes the output easier to trust and understand.
+- **Exact match**: the program satisfies the user’s hard requirements.
+- **Partial match**: the program is close, but misses part of the ideal fit.
+- **Fallback**: the program has stronger mismatches and is shown only when needed.
+- **Score**: used to rank programs after match quality is determined.
 
-### Current matching logic
-
-- **Exact match**: the program satisfies the selected filters.
-- **Partial match**: the program is close, such as a global program instead of an exact country match.
-- **Fallback**: the program has at least one hard mismatch, such as the wrong region or no paid bounty when paid-only is selected.
-- **Score**: used only to rank programs inside exact, partial, and fallback groups, not to decide the group itself.
+This makes recommendations easier to trust. A high score does not automatically override a poor fit, and a good fit is not confused with strong metadata alone.
 
 ## Features
 
 - Interactive CLI profile flow.
-- Personalized recommendations based on user preferences.
-- Weighted scoring for freshness, competition, response quality, scope, bounty preference, and region.
-- Clear reasoning output with strengths and tradeoffs for each program.
-- Grouped results: exact, partial, and fallback matches.
-- Display score capped to 0–100 for cleaner output while preserving the raw score for internal ranking.
+- Match-quality aware recommendations.
+- Ranking based on freshness, competition, response quality, or a balanced strategy.
+- Freshness mode that prioritizes the newest valid programs first.
+- Separate handling for hard mismatches in freshness mode.
+- Experience-aware competition scoring.
+- Better handling of incomplete metadata through confidence-aware ranking.
+- Human-readable recommendation output with strengths, risks, tradeoffs, and verdicts.
+- Optional JSON export with `--save`.
+- Separate maintainer pipeline for rebuilding and enriching the dataset.
 
 ## Project structure
 
 ```text
 Bountymatch/
 ├── main.py
+├── fetch_programs.py
 ├── scorer.py
 ├── explainer.py
 ├── hunter_profile.py
 ├── sample_programs.json
+├── data/
+│   └── programs.json
 ├── README.md
 └── requirements.txt
 ```
 
-As the project grows, this structure will make it easier to add fetchers, cached data, and platform-specific normalization.
-
-## How ranking works
-
-Bountymatch separates **filter satisfaction** from **ranking strength**:
-
-1. User filters determine whether a program is exact, partial, or fallback.
-2. Weighted scoring then sorts programs inside those groups.
-3. The output explains why each program appears where it does.
-
-This keeps the recommendation system easier to reason about and debug.
-
-## Getting started
+## Installation
 
 ### 1. Clone the repository
 
@@ -76,77 +71,248 @@ source .venv/bin/activate
 
 ### 3. Install dependencies
 
-No external Python packages are required for the current CLI version.
-
-The project currently uses only Python standard library modules, so this step is optional for now.
-
-If you still want to keep the normal workflow:
-
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Run the project
+Current dependency:
+
+```txt
+colorama>=0.4.6
+```
+
+## Usage
+
+### Run the recommender
 
 ```bash
 python main.py
 ```
 
-## requirements.txt
+Bountymatch will use:
 
-For the current version, your `requirements.txt` can contain:
+- `data/programs.json` if a cached dataset exists
+- `sample_programs.json` if no cached dataset is available
 
-```txt
-# No external dependencies required for the current CLI version.
-# Uses only Python standard library modules.
+### Save recommendations to JSON
+
+```bash
+python main.py --save
 ```
 
-## Sample flow
+This writes output to:
 
 ```text
-[Step 1] Experience Level
-[Step 2] Testing Focus Areas
-[Step 3] Bounty Preference
-[Step 4] Region / Country Preference
-[Step 5] What matters most to you?
-[Step 6] Program Type
+results.json
 ```
 
-After answering the prompts, Bountymatch prints the best available matches first, followed by close matches and fallback options.
+## CLI flow
 
-## Data format
+The recommender asks for:
 
-The program currently expects a JSON list of programs with fields like:
+1. Experience level
+2. Testing focus areas
+3. Bounty preference
+4. Region / country preference
+5. Ranking priority
+6. Program type
+
+After that, Bountymatch prints recommendations based on your chosen ranking mode.
+
+## How ranking works
+
+Bountymatch supports four ranking priorities:
+
+- **Freshness**: prefers newly launched programs, with crowd-awareness as a secondary signal.
+- **Low competition**: prefers programs with lower recent/public report activity and, when available, smaller active reporter pools.
+- **Response quality**: prefers stronger response rates, faster response/triage times, and better payout signals.
+- **Balanced**: combines freshness, competition, response quality, and payout into a mixed recommendation.
+
+The scorer also tracks **data confidence**, so weakly populated programs are ranked more carefully.
+
+## Match quality vs score
+
+Bountymatch does **not** rely only on numeric score.
+
+A recommendation is judged using two layers:
+
+1. **Match quality**: whether the program fits the hunter’s selected focus, region, bounty preference, and program type.
+2. **Score**: how strong the program looks inside that fit level, based on your selected priority and available metadata.
+
+This helps avoid misleading situations where a high-scoring program still violates the user’s hard preferences.
+
+## Freshness mode behavior
+
+Freshness mode is slightly different from the other ranking modes.
+
+Instead of showing only the normal exact/partial/fallback grouping, it separates results into:
+
+- **Freshest Eligible Programs First**: programs that satisfy hard constraints and are sorted by freshness.
+- **Other Fresh Programs (hard mismatches)**: newer programs that may still be interesting, but do not satisfy key constraints such as paid-only or selected program type.
+
+This makes freshness mode more practical for real hunting. You still discover new programs quickly, but invalid targets do not pollute the primary recommendation list.
+
+## Output style
+
+Each recommendation includes:
+
+- program name and platform,
+- country,
+- score,
+- match quality,
+- data confidence,
+- crowd signal and crowd source,
+- payout and response metrics,
+- public severity summary when available,
+- strengths,
+- risks and tradeoffs,
+- verdict label.
+
+## Data sources and enrichment
+
+The maintainer pipeline fetches and normalizes public program data from:
+
+- HackerOne
+- Bugcrowd
+- Intigriti
+
+It can also optionally enrich merged HackerOne records using:
+
+- HackerOne program API metadata
+- HackerOne Hacktivity public/disclosed report signals
+
+That enrichment improves fields such as:
+
+- `response_rate`
+- `avg_response_days`
+- `reports_received_90d`
+- `public_reports_90d`
+- `public_awarded_reports`
+- `public_average_payout`
+- `public_severity_breakdown`
+
+These enriched fields help the scorer and explainer give more realistic recommendations.
+
+## Example normalized program fields
 
 ```json
 {
   "name": "CRED",
   "platform": "HackerOne",
-  "country": "India",
+  "country": "india",
   "scope_types": ["web", "api"],
   "offers_bounty": true,
   "launched_days_ago": 55,
   "response_rate": 88,
+  "avg_response_days": 3,
   "awarded_reports": 35,
   "awarded_reporters": 12,
-  "reports_received_90d": 74
+  "reports_received_90d": 74,
+  "average_payout": 250,
+  "max_payout": 5000,
+  "public_reports_90d": 19,
+  "public_awarded_reports": 11,
+  "public_average_payout": 420,
+  "public_severity_breakdown": {
+    "high": 2,
+    "medium": 7,
+    "low": 10
+  },
+  "url": "https://hackerone.com/example"
 }
 ```
 
+## For users
+
+If you only want recommendations, you do **not** need API credentials.
+
+Typical user workflow:
+
+```bash
+python main.py
+```
+
+That is enough if the repository already contains `data/programs.json`, or if you are okay using the bundled sample dataset.
+
+## For maintainers
+
+This section is for the project owner or anyone rebuilding the dataset.
+
+### Rebuild the cached dataset
+
+```bash
+python fetch_programs.py
+```
+
+This creates or updates:
+
+```text
+data/programs.json
+```
+
+### Optional HackerOne enrichment
+
+`fetch_programs.py` can optionally enrich merged HackerOne programs with additional metadata from the HackerOne API and Hacktivity.
+
+This is a **maintainer-only** workflow.
+
+Regular users do not need HackerOne credentials and do not need to run this step.
+
+If a maintainer wants to run enrichment locally, the script reads these environment variables:
+
+- `H1_USERNAME`
+- `H1_API_TOKEN`
+
+**Windows**
+
+```bash
+set H1_USERNAME=your_hackerone_username
+set H1_API_TOKEN=your_hackerone_token
+python fetch_programs.py
+```
+
+**macOS / Linux**
+
+```bash
+H1_USERNAME=your_hackerone_username H1_API_TOKEN=your_hackerone_token python fetch_programs.py
+```
+
+If these variables are not set, the fetch still works, but HackerOne enrichment is skipped.
+
+### Why the fetch pipeline is separate
+
+The recommendation CLI is designed for normal users.
+
+The fetch pipeline is separate because it:
+
+- depends on external platform data,
+- may use authenticated enrichment,
+- rebuilds the shared cached dataset,
+- is better suited to maintainers than day-to-day users.
+
+This keeps the CLI simple and avoids forcing end users to manage external credentials.
+
 ## Current status
 
-This version uses sample program data for development and testing.
+Bountymatch now has two clear layers:
 
-The next major milestone is connecting real platform data through a separate fetch-and-normalize pipeline rather than mixing external-site logic directly into the CLI.
+- a **user CLI** for personalized recommendations,
+- a **maintainer fetch/enrichment pipeline** for improving dataset quality.
 
-## Planned improvements
+That split makes the project easier to use, easier to maintain, and easier to extend later into automation or a web product.
 
-- Add `fetch_programs.py` for real platform data.
-- Normalize data from multiple platforms into one shared schema.
-- Store fetched results in a local `data/programs.json` cache.
-- Add a web UI version of Bountymatch.
-- Add tests for scoring and grouping behavior.
+## Suggested next improvements
+
+- Add unit tests for scoring and grouping behavior.
+- Add schema validation for normalized records.
+- Add a small `--top N` flag for output control.
+- Add optional non-interactive CLI arguments.
+- Add automated cache refresh workflows.
+- Improve zero-value handling in signal resolver helpers.
+- Add a web UI in the future.
 
 ## Why this project matters
 
-Bountymatch is meant to become more than a demo script. The goal is to build a practical target-selection tool for bug bounty hunters while also showing clean scoring logic, readable CLI output, and a project structure that can grow into real data integration.
+Bountymatch is more than a simple demo script.
+
+It is a recommendation engine for bug bounty target selection, with explicit tradeoffs, explainable ranking, and a structure that can grow into a more serious tool.
