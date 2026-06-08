@@ -49,7 +49,7 @@ Bountymatch/
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/rohitoff799-netizen/Bountymatch.git
 cd Bountymatch
 ```
 
