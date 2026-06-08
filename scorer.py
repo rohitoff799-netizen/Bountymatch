@@ -2,6 +2,14 @@ def count_present(*values):
     return sum(value is not None for value in values)
 
 
+def first_not_none(program, *keys):
+    for key in keys:
+        value = program.get(key)
+        if value is not None:
+            return value
+    return None
+
+
 def resolve_crowd_value(program):
     """
     Best available crowd signal, in priority order:
@@ -10,11 +18,12 @@ def resolve_crowd_value(program):
     3. awarded_reports (from platform API, rare)
     4. public_awarded_reports (from Hacktivity API, fallback)
     """
-    return (
-        program.get("reports_received_90d")
-        or program.get("public_reports_90d")
-        or program.get("awarded_reports")
-        or program.get("public_awarded_reports")
+    return first_not_none(
+        program,
+        "reports_received_90d",
+        "public_reports_90d",
+        "awarded_reports",
+        "public_awarded_reports",
     )
 
 
@@ -25,10 +34,11 @@ def resolve_payout_value(program):
     2. average_payout (from Intigriti min/max average)
     3. public_average_payout (from Hacktivity disclosed reports)
     """
-    return (
-        program.get("max_payout")
-        or program.get("average_payout")
-        or program.get("public_average_payout")
+    return first_not_none(
+        program,
+        "max_payout",
+        "average_payout",
+        "public_average_payout",
     )
 
 
@@ -158,7 +168,11 @@ def score_program(program, profile):
 
     payout_value = resolve_payout_value(program)
     max_payout = program.get("max_payout")
-    average_payout = program.get("average_payout") or program.get("public_average_payout")
+    average_payout = first_not_none(
+        program,
+        "average_payout",
+        "public_average_payout",
+    )
 
     awarded_reporters = resolve_awarded_reporters(program)
 

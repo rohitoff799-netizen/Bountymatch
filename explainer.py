@@ -93,12 +93,22 @@ def normalize_url(url):
 
     url = str(url).strip()
 
-    if "](" in url and url.startswith("[") and url.endswith(")"):
-        parts = url.split("](", 1)
-        if len(parts) == 2:
-            extracted = parts[1][:-1].strip()
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+
+    if url.startswith("[") and "](" in url and url.endswith(")"):
+        try:
+            _, rest = url.split("](", 1)
+            extracted = rest[:-1].strip()
             if extracted.startswith("http://") or extracted.startswith("https://"):
                 return extracted
+        except ValueError:
+            pass
+
+    if url.startswith("<") and url.endswith(">"):
+        candidate = url[1:-1].strip()
+        if candidate.startswith("http://") or candidate.startswith("https://"):
+            return candidate
 
     return url
 
